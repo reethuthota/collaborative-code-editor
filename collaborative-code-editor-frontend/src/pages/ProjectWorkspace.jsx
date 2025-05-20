@@ -93,7 +93,7 @@ const ProjectWorkspace = () => {
           console.error("Failed to send edit:", e);
         }
       }
-    }, 300),
+    }, 700),
     [projectId, selectedItem, userId]
   );
 
@@ -112,6 +112,105 @@ const ProjectWorkspace = () => {
 
         stompClient.current.subscribe(`/topic/session/${projectId}`, (message) => {
           console.log("Session update:", message.body);
+        });
+
+        // Subscribe to structure updates
+        stompClient.current.subscribe(`/topic/structure/${projectId}`, (message) => {
+          try {
+            const structureMessage = JSON.parse(message.body);
+            console.log("Received structure message:", structureMessage); // Debugging
+            if (structureMessage.type === "structure_initialize") {
+              const { action, fileTree, senderId } = structureMessage;
+              if (action === "initialize" && fileTree) {
+                setFiles(fileTree);
+                const initialExpanded = {};
+                const collectFolders = (fileList) => {
+                  fileList.forEach((file) => {
+                    if (file.type === "folder") {
+                      initialExpanded[file.path] = true;
+                      if (file.children) collectFolders(file.children);
+                    }
+                  });
+                };
+                collectFolders(fileTree);
+                setExpandedFolders(initialExpanded);
+                toast.info(`Project file tree initialized by ${senderId}`, {
+                  position: 'top-right',
+                });
+              }
+              return;
+            }
+
+            if (structureMessage.type === "structure_change") {
+              const { action, newItem, parentPath, timestamp, senderId } = structureMessage;
+              if (!newItem || !newItem.type || !newItem.path) {
+                console.warn("Invalid structure message: missing newItem, type, or path", structureMessage);
+                return;
+              }
+
+              setFiles((prevFiles) => {
+                let updatedFiles = [...prevFiles];
+                if (findFileByPath(updatedFiles, newItem.path)) {
+                  return prevFiles;
+                }
+                if (parentPath) {
+                  updatedFiles = updateFileByPath(updatedFiles, parentPath, (folder) => ({
+                    ...folder,
+                    children: [...(folder.children || []), newItem],
+                  }));
+                } else {
+                  updatedFiles.push(newItem);
+                }
+                updatedFiles = buildFileTree(
+                  collectAllFiles(updatedFiles).reduce((acc, file) => {
+                    acc[file.path] = file.content;
+                    return acc;
+                  }, {})
+                );
+                console.log("Updated file tree:", JSON.stringify(updatedFiles, null, 2)); // Debugging
+                return updatedFiles;
+              });
+              setExpandedFolders((prev) => ({
+                ...prev,
+                [parentPath || newItem.path]: true,
+              }));
+              toast.info(`New ${newItem.type} created by ${senderId}: ${newItem.path}`, {
+                position: 'top-right',
+              });
+            }
+
+            if (structureMessage.type === "structure_delete") {
+              const { path, senderId } = structureMessage;
+              if (!path) {
+                console.warn("Invalid delete message: missing path", structureMessage);
+                return;
+              }
+
+              setFiles((prevFiles) => {
+                let updatedFiles = [...prevFiles];
+                const parentPath = getParentPath(path);
+                if (parentPath) {
+                  updatedFiles = updateFileByPath(updatedFiles, parentPath, (folder) => ({
+                    ...folder,
+                    children: folder.children.filter((child) => child.path !== path),
+                  }));
+                } else {
+                  updatedFiles = updatedFiles.filter((file) => file.path !== path);
+                }
+                console.log("Updated file tree after deletion:", JSON.stringify(updatedFiles, null, 2)); // Debugging
+                return updatedFiles;
+              });
+
+              if (selectedItem?.path === path || (path.includes("/") && selectedItem?.path.startsWith(path))) {
+                setSelectedItem(null);
+                setFileContent("");
+              }
+              toast.info(`${senderId} deleted: ${path}`, { position: 'top-right' });
+            }
+          } catch (e) {
+            console.error("Error parsing structure message:", e);
+            toast.error("Failed to process structure update", { position: 'top-right' });
+          }
         });
 
         if (selectedItem?.type === "file") {
@@ -213,26 +312,51 @@ const ProjectWorkspace = () => {
         return;
       }
 
+      let fileTree;
+      let description = `Description for ${repo}`; // Default description
+
       try {
-        const params = new URLSearchParams({ owner, repo, branch });
-        const response = await fetch(`/api/github/files?${params.toString()}`, {
+        // Check Redis for existing file structure
+        const redisResponse = await fetch(`/api/redis/structure?projectId=${projectId}`, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
         });
 
-        if (!response.ok) {
-          throw new Error(`API Error: ${response.statusText}`);
+        if (redisResponse.ok) {
+          const redisData = await redisResponse.json();
+          if (redisData && redisData.length > 0) {
+            fileTree = redisData;
+            // Optionally, find README.md in redisData if needed
+            const readmeFile = findFileByPath(redisData, "README.md");
+            if (readmeFile && readmeFile.content) {
+              description = readmeFile.content.split("\n")[1] || description;
+            }
+          }
         }
 
-        const fileData = await response.json();
-        console.log("Fetched files:", fileData);
+        if (!fileTree) {
+          const params = new URLSearchParams({ owner, repo, branch });
+          const githubResponse = await fetch(`/api/github/files?${params.toString()}`, {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          });
 
-        const fileTree = buildFileTree(fileData);
+          if (!githubResponse.ok) {
+            throw new Error(`GitHub API Error: ${githubResponse.statusText}`);
+          }
+
+          const fileData = await githubResponse.json();
+          console.log("Fetched files from GitHub:", fileData);
+          fileTree = buildFileTree(fileData);
+          description = fileData["README.md"]?.split("\n")[1] || description;
+        }
+
         const projectData = {
           id: projectId,
           name: repo,
-          description: fileData["README.md"]?.split("\n")[1] || `Description for ${repo}`,
+          description,
           files: fileTree,
           owner,
           repo,
@@ -240,6 +364,24 @@ const ProjectWorkspace = () => {
 
         setProject(projectData);
         setFiles(projectData.files || []);
+
+        if (stompClient.current?.connected && !redisResponse.ok) {
+          try {
+            stompClient.current.publish({
+              destination: `/app/structure/${projectId}`,
+              body: JSON.stringify({
+                type: "structure_initialize",
+                projectId,
+                senderId: userId,
+                action: "initialize",
+                fileTree: fileTree,
+                timestamp: Date.now(),
+              }),
+            });
+          } catch (e) {
+            console.error("Failed to send initial file tree:", e);
+          }
+        }
 
         const initialExpanded = {};
         const collectFolders = (fileList) => {
@@ -251,7 +393,6 @@ const ProjectWorkspace = () => {
           });
         };
         collectFolders(projectData.files);
-        console.log("Initial expanded folders:", initialExpanded);
         setExpandedFolders(initialExpanded);
 
         const firstFile =
@@ -263,14 +404,15 @@ const ProjectWorkspace = () => {
           setFileContent(firstFile.content);
         }
       } catch (err) {
-        setError(err.message);
+        console.error("Error fetching project data:", err);
+        setError(`Failed to load project: ${err.message}`);
       } finally {
         setLoading(false);
       }
     };
 
     fetchProjectData();
-  }, [projectId, navigate]);
+  }, [projectId, navigate, userId]);
 
   const handleEditorChange = (value) => {
     setFileContent(value);
@@ -635,6 +777,28 @@ const ProjectWorkspace = () => {
     }
     setNewFileName("");
     setIsCreateFileModalOpen(false);
+
+    // Send WebSocket message for structure update
+    if (stompClient.current?.connected) {
+      try {
+        stompClient.current.publish({
+          destination: `/app/structure/${projectId}`,
+          body: JSON.stringify({
+            type: "structure_change",
+            projectId,
+            senderId: userId,
+            action: "create_file",
+            newItem: newFile,
+            parentPath,
+            timestamp: Date.now(),
+          }),
+        });
+        toast.success(`File created: ${targetPath}`, { position: 'top-right' });
+      } catch (e) {
+        console.error("Failed to send structure update:", e);
+        toast.error("Failed to notify collaborators of new file", { position: 'top-right' });
+      }
+    }
   };
 
   const handleCreateFolder = () => {
@@ -694,6 +858,28 @@ const ProjectWorkspace = () => {
     }));
     setNewFolderName("");
     setIsCreateFolderModalOpen(false);
+
+    // Send WebSocket message for structure update
+    if (stompClient.current?.connected) {
+      try {
+        stompClient.current.publish({
+          destination: `/app/structure/${projectId}`,
+          body: JSON.stringify({
+            type: "structure_change",
+            projectId,
+            senderId: userId,
+            action: "create_folder",
+            newItem: newFolder,
+            parentPath,
+            timestamp: Date.now(),
+          }),
+        });
+        toast.success(`Folder created: ${targetPath}`, { position: 'top-right' });
+      } catch (e) {
+        console.error("Failed to send structure update:", e);
+        toast.error("Failed to notify collaborators of new folder", { position: 'top-right' });
+      }
+    }
   };
 
   const handleDeleteItem = () => {
@@ -742,8 +928,28 @@ const ProjectWorkspace = () => {
       setFileContent("");
     }
     setIsDeleteModalOpen(false);
+
+    // Send WebSocket message for structure deletion
+    if (stompClient.current?.connected) {
+      try {
+        stompClient.current.publish({
+          destination: `/app/structure/${projectId}`,
+          body: JSON.stringify({
+            type: "structure_delete",
+            projectId,
+            senderId: userId,
+            path: itemToDelete.path,
+            timestamp: Date.now(),
+          }),
+        });
+        toast.success(`${itemToDelete.type === "file" ? "File" : "Folder"} deleted: ${itemToDelete.path}`, { position: 'top-right' });
+      } catch (e) {
+        console.error("Failed to send delete update:", e);
+        toast.error("Failed to notify collaborators of deletion", { position: 'top-right' });
+      }
+    }
+
     setItemToDelete(null);
-    toast.success(`${itemToDelete.type === "file" ? "File" : "Folder"} deleted`, { position: 'top-right' });
   };
 
   const hasUncommittedChanges = () => {

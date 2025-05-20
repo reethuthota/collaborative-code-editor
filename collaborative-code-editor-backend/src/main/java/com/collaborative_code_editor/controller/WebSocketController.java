@@ -14,6 +14,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
+import java.util.List;
 import java.util.Map;
 
 @Controller
@@ -120,5 +121,81 @@ public class WebSocketController {
         // Broadcast leave event
         String message = "User " + userId + " has left the project workspace.";
         return message;
+    }
+
+    @MessageMapping("/structure/{projectId}")
+    @SendTo("/topic/structure/{projectId}")
+    public Map<String, Object> handleStructureUpdate(
+            @DestinationVariable String projectId,
+            @Payload Map<String, Object> message,
+            SimpMessageHeaderAccessor headerAccessor) {
+        String type = (String) message.get("type");
+        String senderId = (String) message.get("senderId");
+        Long timestamp = (Long) message.get("timestamp");
+
+        if ("structure_change".equals(type)) {
+            // Extract relevant fields from the message
+            String action = (String) message.get("action");
+            Map<String, Object> newItem = (Map<String, Object>) message.get("newItem");
+            String parentPath = (String) message.get("parentPath");
+
+            // Validate the message
+            if (newItem == null || newItem.get("type") == null || newItem.get("path") == null) {
+                System.err.println("Invalid structure message: missing newItem, type, or path");
+                return null; // Optionally, return an error message
+            }
+
+            // Store the new file/folder in Redis
+            redisService.storeFileStructure(projectId, newItem, parentPath);
+
+            // Broadcast the structure change to all subscribers
+            return Map.of(
+                    "type", "structure_change",
+                    "projectId", projectId,
+                    "action", action,
+                    "newItem", newItem,
+                    "parentPath", parentPath != null ? parentPath : "",
+                    "senderId", senderId,
+                    "timestamp", timestamp
+            );
+        } else if ("structure_initialize".equals(type)) {
+            // Handle initialization if needed (e.g., when a user joins and sends the initial file tree)
+            List<Map<String, Object>> fileTree = (List<Map<String, Object>>) message.get("fileTree");
+
+            // Store the initial file tree in Redis
+            redisService.storeInitialFileTree(projectId, fileTree);
+
+            return Map.of(
+                    "type", "structure_initialize",
+                    "projectId", projectId,
+                    "action", "initialize",
+                    "fileTree", fileTree,
+                    "senderId", senderId,
+                    "timestamp", timestamp
+            );
+        } else if ("structure_delete".equals(type)) {
+            // Extract the path of the item to delete
+            String path = (String) message.get("path");
+
+            // Validate the message
+            if (path == null) {
+                System.err.println("Invalid delete message: missing path");
+                return null;
+            }
+
+            // Remove the item from Redis
+            redisService.deleteFileStructure(projectId, path);
+
+            // Broadcast the deletion to all subscribers
+            return Map.of(
+                    "type", "structure_delete",
+                    "projectId", projectId,
+                    "path", path,
+                    "senderId", senderId,
+                    "timestamp", timestamp
+            );
+        }
+
+        return null; // Ignore unsupported message types
     }
 }
