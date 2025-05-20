@@ -366,7 +366,7 @@ const ProjectWorkspace = () => {
             body: JSON.stringify(userId),
           });
         }
-        navigate("/projects");
+        navigate("/dashboard");
       }
     } catch (err) {
       toast.error(`Error committing: ${err.message}`, { position: 'top-right' });
@@ -383,7 +383,7 @@ const ProjectWorkspace = () => {
           body: JSON.stringify(userId),
         });
       }
-      navigate("/projects");
+      navigate("/dashboard");
     }
   };
 
@@ -762,7 +762,7 @@ const ProjectWorkspace = () => {
         });
       }
       setIsLeaveModalOpen(false);
-      navigate("/projects");
+      navigate("/dashboard");
     }
   };
 
