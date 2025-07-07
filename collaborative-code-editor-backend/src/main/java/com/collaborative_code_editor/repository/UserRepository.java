@@ -8,7 +8,5 @@ import java.util.Optional;
 public interface UserRepository extends MongoRepository<User, String> {
     boolean existsByGithubId(String githubId);
     boolean existsByGithubLogin(String githubLogin);
-
-    // Add this method
     Optional<User> findByGithubLogin(String githubLogin);
 }

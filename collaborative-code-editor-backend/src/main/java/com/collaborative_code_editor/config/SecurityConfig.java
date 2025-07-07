@@ -90,9 +90,6 @@ public class SecurityConfig {
 
                             System.out.println("Token expiration (UTC Date formatted): " + sdf.format(expiryDate));
 
-
-//                            Date expiryDate = Date.from(client.getAccessToken().getExpiresAt()); // 💥 Fixed here
-
                             // Call your AuthService to handle login and return user details
                             Map<String, Object> userDetails = authService.handleLogin(oauthToken, accessToken, refreshToken, expiryDate);
 
@@ -104,12 +101,6 @@ public class SecurityConfig {
                         })
                 )
 
-//                .logout(logout -> logout
-//                        .logoutUrl("/api/auth/logout") // Custom logout URL
-//                        .logoutSuccessUrl("http://localhost:5173/") // Redirect after logout
-//                        .invalidateHttpSession(true) // Invalidate session
-//                        .deleteCookies("JSESSIONID") // Remove session cookie
-//                )
 
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

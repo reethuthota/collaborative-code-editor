@@ -21,13 +21,3 @@ public class User {
     private Integer githubId;
     private String githubUrl;
 }
-
-//    // GitHub tokens
-//    private String accessToken; // GitHub access token
-//    private String refreshToken; // GitHub refresh token
-//    private Date accessTokenExpiry; // GitHub access token expiry time
-//
-//    // JWT tokens (for frontend-backend communication)
-//    private String jwtAccessToken; // JWT access token
-//    private String jwtRefreshToken; // JWT refresh token
-//    private Date jwtAccessTokenExpiry; // JWT access token expiry time

@@ -14,6 +14,5 @@ public class ProjectFile {
     private String name;
     private String type; // "file" or "folder"
     private String path; // Full path like "src/utils/helper.js"
-//    private String content; // Only for files
     private List<ProjectFile> children = new ArrayList<>(); // Only for folders
 }

@@ -34,8 +34,6 @@ public class SessionTrackerService {
                 // Clean up Redis data when the last user leaves the project
                 redisService.removeWebSocketClient(projectId);  // Optional: if you're using socket ID
                 redisService.removeUserAndCleanUpIfLast(projectId, userId);  // Just in case
-//                redisService.deleteCode(projectId, filePath);  // Clean up the code stored in Redis for the project
-//                redisService.deleteChatAndTyping(projectId, filePath);  // Clean up chat and typing data
             } else {
                 redisService.removeUserAndCleanUpIfLast(projectId, userId);  // Remove the user from Redis
             }

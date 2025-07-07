@@ -305,23 +305,3 @@ public class GithubService {
 
 
 }
-
-//public void addCollaboratorToRepo(User currentUser, String accessToken, String repoUrl, String collaboratorUsername) {
-//        HttpHeaders headers = new HttpHeaders();
-//        headers.setBearerAuth(accessToken);
-//        headers.setContentType(MediaType.APPLICATION_JSON);
-//
-//        String[] parts = repoUrl.split("/");
-//        String owner = currentUser.getGithubLogin();
-//        String owner = parts[parts.length - 2];
-//        String repo = parts[parts.length - 1];
-//
-//        String url = "https://api.github.com/repos/" + owner + "/" + repo + "/collaborators/" + collaboratorUsername;
-//        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.PUT, new HttpEntity<>(headers), String.class);
-//
-//        if (!response.getStatusCode().is2xxSuccessful()) {
-//            throw new RuntimeException("Failed to add collaborator to GitHub: " + response.getBody());
-//        }
-//
-//        System.out.println("✅ Collaborator added: " + collaboratorUsername);
-//    }

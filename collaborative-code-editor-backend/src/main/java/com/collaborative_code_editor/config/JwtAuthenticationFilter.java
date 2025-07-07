@@ -78,23 +78,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         return new RuntimeException("User not found for githubLogin: " + githubLogin);
                     });
 
-            // Alternatively, fetch from Redis (if MongoDB lookup is slow or unnecessary)
-            /*
-            Map<String, Object> userDetails = (Map<String, Object>) redisTemplate.opsForValue().get(githubLogin);
-            if (userDetails == null) {
-                logger.error("User not found in Redis for githubLogin: {}", githubLogin);
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                response.getWriter().write("User session expired or not found");
-                return;
-            }
-            User user = new User();
-            user.setGithubLogin((String) userDetails.get("githubLogin"));
-            user.setName((String) userDetails.get("name"));
-            user.setEmail((String) userDetails.get("email"));
-            user.setAvatarUrl((String) userDetails.get("avatarUrl"));
-            user.setGithubId((Integer) userDetails.get("githubId"));
-            user.setGithubUrl((String) userDetails.get("githubUrl"));
-            */
 
             logger.info("Authenticated User: {}", user);
 
