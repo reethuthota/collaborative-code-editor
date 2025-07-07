@@ -858,28 +858,6 @@ const ProjectWorkspace = () => {
     }));
     setNewFolderName("");
     setIsCreateFolderModalOpen(false);
-
-    // Send WebSocket message for structure update
-    if (stompClient.current?.connected) {
-      try {
-        stompClient.current.publish({
-          destination: `/app/structure/${projectId}`,
-          body: JSON.stringify({
-            type: "structure_change",
-            projectId,
-            senderId: userId,
-            action: "create_folder",
-            newItem: newFolder,
-            parentPath,
-            timestamp: Date.now(),
-          }),
-        });
-        toast.success(`Folder created: ${targetPath}`, { position: 'top-right' });
-      } catch (e) {
-        console.error("Failed to send structure update:", e);
-        toast.error("Failed to notify collaborators of new folder", { position: 'top-right' });
-      }
-    }
   };
 
   const handleDeleteItem = () => {
